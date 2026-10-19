@@ -1,0 +1,16 @@
+# Build artifacts
+*.o
+*.ko
+*.mod
+*.mod.c
+.*.cmd
+Module.symvers
+modules.order
+.tmp_versions/
+
+# Python
+__pycache__/
+*.pyc
+
+# Binaries
+apps/gc5024-camera

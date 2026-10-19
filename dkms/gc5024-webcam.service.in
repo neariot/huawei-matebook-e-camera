@@ -1,0 +1,19 @@
+[Unit]
+Description=GC5024 camera userspace ISP (MateBook E)
+# The sensor and loopback modules are loaded by systemd-modules-load.
+After=systemd-modules-load.service
+
+[Service]
+Type=simple
+User=@USER@
+SupplementaryGroups=video
+# Wait for the CIO2 video node; probe order is asynchronous.
+ExecStartPre=/bin/sh -c 'i=0; while [ ! -e /dev/video0 ] && [ $i -lt 150 ]; do i=$((i+1)); sleep 0.2; done; test -e /dev/video0'
+ExecStart=@ROOT@/apps/gc5024-camera --src /dev/video0 --dst /dev/video20 --media /dev/media0 --src-width 1920 --src-height 1080 --width 1920 --height 1080
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

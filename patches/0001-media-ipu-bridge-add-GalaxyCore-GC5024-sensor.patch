@@ -1,0 +1,22 @@
+From 19a47d0d539de0ce3663b77bd414e2641c46ed8c Mon Sep 17 00:00:00 2001
+From: MateBook E camera project <dev@example.com>
+Date: Mon, 19 Oct 2026 09:05:23 +0800
+Subject: [PATCH 1/2] media: ipu-bridge: add GalaxyCore GC5024 sensor
+
+---
+ drivers/media/pci/intel/ipu-bridge.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/media/pci/intel/ipu-bridge.c b/drivers/media/pci/intel/ipu-bridge.c
+index bd64c04..da1453b 100644
+--- a/drivers/media/pci/intel/ipu-bridge.c
++++ b/drivers/media/pci/intel/ipu-bridge.c
+@@ -59,6 +59,8 @@ static const struct ipu_sensor_config ipu_supported_sensors[] = {
+ 	IPU_SENSOR_CONFIG("HIMX2172", 1, 384000000),
+ 	/* GalaxyCore GC0310 */
+ 	IPU_SENSOR_CONFIG("INT0310", 1, 55692000),
++	/* GalaxyCore GC5024 */
++	IPU_SENSOR_CONFIG("GCTI5024", 1, 420000000),
+ 	/* Omnivision OV5693 */
+ 	IPU_SENSOR_CONFIG("INT33BE", 1, 419200000),
+ 	/* Onsemi MT9M114 */

@@ -1,0 +1,123 @@
+From 14fa491eb959a97082eeaa7ee0fde33b4c31fd80 Mon Sep 17 00:00:00 2001
+From: MateBook E camera project <dev@example.com>
+Date: Mon, 19 Oct 2026 09:05:23 +0800
+Subject: [PATCH 2/2] platform/x86: int3472: add Huawei MateBook E TPS68470
+ board data
+
+---
+ .../x86/intel/int3472/tps68470_board_data.c   | 95 +++++++++++++++++++
+ 1 file changed, 95 insertions(+)
+
+diff --git a/drivers/platform/x86/intel/int3472/tps68470_board_data.c b/drivers/platform/x86/intel/int3472/tps68470_board_data.c
+index c535424..50e5e3c 100644
+--- a/drivers/platform/x86/intel/int3472/tps68470_board_data.c
++++ b/drivers/platform/x86/intel/int3472/tps68470_board_data.c
+@@ -411,6 +411,94 @@ static struct gpiod_lookup_table intel_nvl_tps68470_gpios = {
+ 	}
+ };
+ 
++/* Settings for Huawei MateBook E (Kaby Lake, GalaxyCore GC5024 sensor) */
++
++static struct regulator_consumer_supply huawei_matebook_e_gcti5024_core_consumer_supplies[] = {
++	REGULATOR_SUPPLY("dvdd", "i2c-GCTI5024:00"),
++};
++
++static struct regulator_consumer_supply huawei_matebook_e_gcti5024_ana_consumer_supplies[] = {
++	REGULATOR_SUPPLY("avdd", "i2c-GCTI5024:00"),
++};
++
++static struct regulator_consumer_supply huawei_matebook_e_gcti5024_vsio_consumer_supplies[] = {
++	REGULATOR_SUPPLY("dovdd", "i2c-GCTI5024:00"),
++};
++
++static const struct regulator_init_data huawei_matebook_e_tps68470_core_reg_init_data = {
++	.constraints = {
++		.min_uV = 1200000,
++		.max_uV = 1200000,
++		.apply_uV = true,
++		.valid_ops_mask = REGULATOR_CHANGE_STATUS,
++	},
++	.num_consumer_supplies = ARRAY_SIZE(huawei_matebook_e_gcti5024_core_consumer_supplies),
++	.consumer_supplies = huawei_matebook_e_gcti5024_core_consumer_supplies,
++};
++
++static const struct regulator_init_data huawei_matebook_e_tps68470_ana_reg_init_data = {
++	.constraints = {
++		.min_uV = 2815200,
++		.max_uV = 2815200,
++		.apply_uV = true,
++		.valid_ops_mask = REGULATOR_CHANGE_STATUS,
++	},
++	.num_consumer_supplies = ARRAY_SIZE(huawei_matebook_e_gcti5024_ana_consumer_supplies),
++	.consumer_supplies = huawei_matebook_e_gcti5024_ana_consumer_supplies,
++};
++
++/* Ensure the always-on VIO regulator has the same voltage as VSIO */
++static const struct regulator_init_data huawei_matebook_e_tps68470_vio_reg_init_data = {
++	.constraints = {
++		.min_uV = 1800600,
++		.max_uV = 1800600,
++		.apply_uV = true,
++		.always_on = true,
++	},
++};
++
++static const struct regulator_init_data huawei_matebook_e_tps68470_vsio_reg_init_data = {
++	.constraints = {
++		.min_uV = 1800600,
++		.max_uV = 1800600,
++		.apply_uV = true,
++		.valid_ops_mask = REGULATOR_CHANGE_STATUS,
++	},
++	.num_consumer_supplies = ARRAY_SIZE(huawei_matebook_e_gcti5024_vsio_consumer_supplies),
++	.consumer_supplies = huawei_matebook_e_gcti5024_vsio_consumer_supplies,
++};
++
++static const struct tps68470_regulator_platform_data huawei_matebook_e_tps68470_pdata = {
++	.reg_init_data = {
++		[TPS68470_CORE] = &huawei_matebook_e_tps68470_core_reg_init_data,
++		[TPS68470_ANA]  = &huawei_matebook_e_tps68470_ana_reg_init_data,
++		[TPS68470_VIO]  = &huawei_matebook_e_tps68470_vio_reg_init_data,
++		[TPS68470_VSIO] = &huawei_matebook_e_tps68470_vsio_reg_init_data,
++	},
++};
++
++/*
++ * Verified on hardware: the sensor is held in reset until s_resetn, the
++ * TPS68470's logic output 9 (SGPO bit 2), is driven high.  It is the only
++ * control line the GC5024 needs - all regular PMIC GPIOs can stay inputs.
++ */
++static struct gpiod_lookup_table huawei_matebook_e_gcti5024_gpios = {
++	.dev_id = "i2c-GCTI5024:00",
++	.table = {
++		GPIO_LOOKUP("tps68470-gpio", 9, "reset", GPIO_ACTIVE_LOW),
++		{ }
++	}
++};
++
++static const struct int3472_tps68470_board_data huawei_matebook_e_tps68470_board_data = {
++	.dev_name = "i2c-INT3472:00",
++	.tps68470_regulator_pdata = &huawei_matebook_e_tps68470_pdata,
++	.n_gpiod_lookups = 1,
++	.tps68470_gpio_lookup_tables = {
++		&huawei_matebook_e_gcti5024_gpios,
++	},
++};
++
+ static const struct property_entry int3472_tps68470_daisy_chain_gpio_props[] = {
+ 	PROPERTY_ENTRY_BOOL("daisy-chain-enable"),
+ 	{ }
+@@ -529,6 +617,13 @@ static const struct dmi_system_id int3472_tps68470_board_data_table[] = {
+ 		},
+ 		.driver_data = (void *)&intel_nvl_tps68470_board_data,
+ 	},
++	{
++		.matches = {
++			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "HUAWEI"),
++			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "HUAWEI MateBook E"),
++		},
++		.driver_data = (void *)&huawei_matebook_e_tps68470_board_data,
++	},
+ 	{ }
+ };
+ 

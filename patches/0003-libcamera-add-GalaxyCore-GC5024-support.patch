@@ -1,0 +1,147 @@
+diff --git a/src/ipa/ipu3/algorithms/blc.cpp b/src/ipa/ipu3/algorithms/blc.cpp
+index 35748fb2..31e71434 100644
+--- a/src/ipa/ipu3/algorithms/blc.cpp
++++ b/src/ipa/ipu3/algorithms/blc.cpp
+@@ -50,14 +50,13 @@ void BlackLevelCorrection::prepare([[maybe_unused]] IPAContext &context,
+ 				   ipu3_uapi_params *params)
+ {
+ 	/*
+-	 * The Optical Black Level correction values
+-	 * \todo The correction values should come from sensor specific
+-	 * tuning processes. This is a first rough approximation.
++	 * Sensor already performs internal auto black level calibration.
++	 * Avoid over-subtracting 64 which crushes shadows into total black.
+ 	 */
+-	params->obgrid_param.gr = 64;
+-	params->obgrid_param.r = 64;
+-	params->obgrid_param.b = 64;
+-	params->obgrid_param.gb = 64;
++	params->obgrid_param.gr = 0;
++	params->obgrid_param.r = 0;
++	params->obgrid_param.b = 0;
++	params->obgrid_param.gb = 0;
+ 
+ 	/* Enable the custom black level correction processing */
+ 	params->use.obgrid = 1;
+diff --git a/src/ipa/ipu3/algorithms/tone_mapping.cpp b/src/ipa/ipu3/algorithms/tone_mapping.cpp
+index 160338c1..ab823efa 100644
+--- a/src/ipa/ipu3/algorithms/tone_mapping.cpp
++++ b/src/ipa/ipu3/algorithms/tone_mapping.cpp
+@@ -90,11 +90,9 @@ void ToneMapping::process(IPAContext &context, [[maybe_unused]] const uint32_t f
+ 			  [[maybe_unused]] ControlList &metadata)
+ {
+ 	/*
+-	 * Hardcode gamma to 1.1 as a default for now.
+-	 *
+-	 * \todo Expose gamma control setting through the libcamera control API
++	 * Standard display gamma (2.2) to lift shadows and midtones.
+ 	 */
+-	gamma_ = 1.1;
++	gamma_ = 2.2;
+ 
+ 	if (context.activeState.toneMapping.gamma == gamma_)
+ 		return;
+diff --git a/src/ipa/libipa/camera_sensor_helper.cpp b/src/ipa/libipa/camera_sensor_helper.cpp
+index 9457d62b..0cca8fec 100644
+--- a/src/ipa/libipa/camera_sensor_helper.cpp
++++ b/src/ipa/libipa/camera_sensor_helper.cpp
+@@ -520,6 +520,18 @@ public:
+ };
+ REGISTER_CAMERA_SENSOR_HELPER("gc08a3", CameraSensorHelperGc08a3)
+ 
++class CameraSensorHelperGc5024 : public CameraSensorHelper
++{
++public:
++	CameraSensorHelperGc5024()
++	{
++		/* GC5024 has on-chip auto black level calibration */
++		blackLevel_ = 0;
++		gain_ = AnalogueGainLinear{ 1, 0, 0, 64 };
++	}
++};
++REGISTER_CAMERA_SENSOR_HELPER("gc5024", CameraSensorHelperGc5024)
++
+ class CameraSensorHelperHm1246 : public CameraSensorHelper
+ {
+ public:
+diff --git a/src/libcamera/pipeline/ipu3/ipu3.cpp b/src/libcamera/pipeline/ipu3/ipu3.cpp
+index 0f3e169d..65fa12ee 100644
+--- a/src/libcamera/pipeline/ipu3/ipu3.cpp
++++ b/src/libcamera/pipeline/ipu3/ipu3.cpp
+@@ -125,7 +125,7 @@ class PipelineHandlerIPU3 : public PipelineHandler
+ {
+ public:
+ 	static constexpr unsigned int V4L2_CID_IPU3_PIPE_MODE = 0x009819c1;
+-	static constexpr Size kViewfinderSize{ 1280, 720 };
++	static constexpr Size kViewfinderSize{ 1920, 1080 };
+ 
+ 	enum IPU3PipeModes {
+ 		IPU3PipeModeVideo = 0,
+@@ -726,10 +726,12 @@ int PipelineHandlerIPU3::start(Camera *camera, [[maybe_unused]] const ControlLis
+ 	int ret;
+ 
+ 	/* Disable test pattern mode on the sensor, if any. */
+-	ret = cio2->sensor()->setTestPatternMode(
+-		controls::draft::TestPatternModeEnum::TestPatternModeOff);
+-	if (ret)
+-		return ret;
++	if (!cio2->sensor()->testPatternModes().empty()) {
++		ret = cio2->sensor()->setTestPatternMode(
++			controls::draft::TestPatternModeEnum::TestPatternModeOff);
++		if (ret)
++			return ret;
++	}
+ 
+ 	/* Allocate buffers for internal pipeline usage. */
+ 	ret = allocateBuffers(camera);
+diff --git a/src/libcamera/sensor/camera_sensor_legacy.cpp b/src/libcamera/sensor/camera_sensor_legacy.cpp
+index 6a683821..05d89df6 100644
+--- a/src/libcamera/sensor/camera_sensor_legacy.cpp
++++ b/src/libcamera/sensor/camera_sensor_legacy.cpp
+@@ -1004,6 +1004,9 @@ int CameraSensorLegacy::setTestPatternMode(controls::draft::TestPatternModeEnum
+ 		return 0;
+ 
+ 	if (testPatternModes_.empty()) {
++		if (mode == controls::draft::TestPatternModeEnum::TestPatternModeOff)
++			return 0;
++
+ 		LOG(CameraSensor, Error)
+ 			<< "Camera sensor does not support test pattern modes.";
+ 		return -EINVAL;
+diff --git a/src/libcamera/sensor/camera_sensor_properties.cpp b/src/libcamera/sensor/camera_sensor_properties.cpp
+index 28043150..048ddc1f 100644
+--- a/src/libcamera/sensor/camera_sensor_properties.cpp
++++ b/src/libcamera/sensor/camera_sensor_properties.cpp
+@@ -132,6 +132,18 @@ const CameraSensorProperties *CameraSensorProperties::get(const std::string &sen
+ 				.hblankDelay = 2
+ 			},
+ 		} },
++		{ "gc5024", {
++			.unitCellSize = { 1400, 1400 },
++			.testPatternModes = {
++				{ controls::draft::TestPatternModeOff, 0 },
++			},
++			.sensorDelays = {
++				.exposureDelay = 2,
++				.gainDelay = 2,
++				.vblankDelay = 2,
++				.hblankDelay = 2,
++			},
++		} },
+ 		{ "hi846", {
+ 			.unitCellSize = { 1120, 1120 },
+ 			.testPatternModes = {
+diff --git a/src/libcamera/sensor/camera_sensor_raw.cpp b/src/libcamera/sensor/camera_sensor_raw.cpp
+index 10eba033..64ea6dcd 100644
+--- a/src/libcamera/sensor/camera_sensor_raw.cpp
++++ b/src/libcamera/sensor/camera_sensor_raw.cpp
+@@ -1118,6 +1118,9 @@ int CameraSensorRaw::setTestPatternMode(controls::draft::TestPatternModeEnum mod
+ 		return 0;
+ 
+ 	if (testPatternModes_.empty()) {
++		if (mode == controls::draft::TestPatternModeEnum::TestPatternModeOff)
++			return 0;
++
+ 		LOG(CameraSensor, Error)
+ 			<< "Camera sensor does not support test pattern modes.";
+ 		return -EINVAL;
